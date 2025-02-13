@@ -1,0 +1,5 @@
+// New Dockerfile for Frontend (frontend/Dockerfile.frontend)
+FROM nginx:alpine
+COPY artifacts/frontend-build /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

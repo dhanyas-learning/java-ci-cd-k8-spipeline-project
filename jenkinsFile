@@ -1,9 +1,10 @@
-// Jenkins Pipeline Configuration (Jenkinsfile)
+// Updated Jenkins Pipeline with Separate Build Artifacts and SonarQube Integration
 pipeline {
     agent any
     environment {
         DOCKER_CREDENTIALS_ID = 'dockerhub-credentials'
         GITHUB_CREDENTIALS_ID = 'github-credentials'
+        SONARQUBE_CREDENTIALS_ID = 'sonarqube-token'
         IMAGE_FRONTEND = 'yourdockerhubusername/frontend-app:latest'
         IMAGE_BACKEND = 'yourdockerhubusername/backend-app:latest'
     }
@@ -13,18 +14,39 @@ pipeline {
                 git credentialsId: "$GITHUB_CREDENTIALS_ID", url: 'https://github.com/yourusername/java-ci-cd-k8s-pipeline-project.git'
             }
         }
-        stage('Build Backend') {
+        stage('SonarQube Analysis') {
             steps {
                 script {
-                    sh 'cd backend && ./mvnw clean package'
+                    withCredentials([string(credentialsId: "$SONARQUBE_CREDENTIALS_ID", variable: 'SONAR_TOKEN')]) {
+                        sh '''mvn sonar:sonar \
+                          -Dsonar.projectKey=java-ci-cd-k8s \
+                          -Dsonar.host.url=http://your-sonarqube-server:9000 \
+                          -Dsonar.login=$SONAR_TOKEN'''
+                    }
+                }
+            }
+        }
+        stage('Build Backend Artifact') {
+            steps {
+                script {
+                    sh 'cd backend && ./mvnw clean package -DskipTests'
+                    sh 'cp backend/target/demo-0.0.1-SNAPSHOT.jar artifacts/backend.jar'
+                }
+            }
+        }
+        stage('Build Frontend Artifact') {
+            steps {
+                script {
+                    sh 'cd frontend && npm install && npm run build'
+                    sh 'cp -r frontend/build artifacts/frontend-build'
                 }
             }
         }
         stage('Build and Push Docker Images') {
             steps {
                 script {
-                    sh 'docker build -t $IMAGE_BACKEND ./backend'
-                    sh 'docker build -t $IMAGE_FRONTEND ./frontend'
+                    sh 'docker build -t $IMAGE_BACKEND -f backend/Dockerfile.backend .'
+                    sh 'docker build -t $IMAGE_FRONTEND -f frontend/Dockerfile.frontend .'
                     sh 'echo $DOCKERHUB_PASSWORD | docker login -u $DOCKERHUB_USERNAME --password-stdin'
                     sh 'docker push $IMAGE_BACKEND'
                     sh 'docker push $IMAGE_FRONTEND'
@@ -49,3 +71,4 @@ pipeline {
         }
     }
 }
+
